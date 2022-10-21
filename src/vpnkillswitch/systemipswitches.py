@@ -35,9 +35,9 @@ class SystemIPSwitches:
         self.systemctl = SystemCTL()
         self.systemd = SystemD()
 
-    def switch_on(self, granular: bool = True):
+    def switch_on(self, granular: bool = False, netclass: str = "C"):
         self.switch_flush()
-        self.switch_vpn(granular)
+        self.switch_vpn(granular=granular, netclass=netclass)
         self.switch_docker(granular)
 
     def switch_off(self):

@@ -66,7 +66,7 @@ def vpnkillswitch():
 
     if my_args.on:
         print(f"my_args.on:{my_args.on}, granularity:{my_args.granular}")
-        ipswitches.switch_on(my_args.granular)
+        ipswitches.switch_on(granular=my_args.granular, netclass=my_args.netclass)
 
     if my_args.off:
         print(f"my_args.off:{my_args.off}")
