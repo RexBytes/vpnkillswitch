@@ -18,15 +18,19 @@ class SystemdFilePaths:
     protect_unitname: str = "rexbytes_protect.service"
     docker_unitname: str = "rexbytes_dockerkillswitch.service"
     vpn4_unitname: str = "rexbytes_vpn4killswitch.service"
+    synergy_on_unitname: str = "rexbytes_synergyonkillswitch.service"
     protect_service: str = f"{unitdir}{protect_unitname}"
     docker_service: str = f"{unitdir}{docker_unitname}"
     vpn4_service: str = f"{unitdir}{vpn4_unitname}"
+    synergy_on_service: str = f"{unitdir}{synergy_on_unitname}"
     nuke_bash: str = f"{bashdir}rexbytes_nuke.sh"
     flush_bash: str = f"{bashdir}rexbytes_flush.sh"
     off_bash: str = f"{bashdir}rexbytes_off.sh"
     protect_bash: str = f"{bashdir}rexbytes_protect.sh"
     docker_bash: str = f"{bashdir}rexbytes_dockerkillswitch.sh"
     vpn4_bash: str = f"{bashdir}rexbytes_vpn4killswitch.sh"
+    synergy_on_bash: str = f"{bashdir}rexbytes_synergyon.sh"
+    synergy_off_bash: str = f"{bashdir}rexbytes_synergyoff.sh"
 
 
 class SystemIPSwitches:
@@ -53,6 +57,10 @@ class SystemIPSwitches:
 
         try:
             self.systemctl.docker_ctl_disable()
+        except Exception as e:
+            print(e)
+        try:
+            self.systemctl.synergy_on_ctl_disable()
         except Exception as e:
             print(e)
         self.systemd.off()
@@ -85,6 +93,19 @@ class SystemIPSwitches:
         self.systembash.run_nuke()
         self.systemd.erase_all()
 
+    def switch_synergyon(self):
+        self.systemd.synergy_on()
+        self.systembash.run_synergy_on()
+        self.systemctl.synergy_on_ctl_enable()
+
+    def switch_synergyoff(self):
+        self.systemd.synergy_off()
+        self.systembash.run_synergy_off()
+        try:
+            self.systemctl.synergy_on_ctl_disable()
+        except Exception as e:
+            print(e)
+
 
 class SystemBash:
     def __init__(self):
@@ -107,6 +128,12 @@ class SystemBash:
 
     def run_vpn4(self):
         subprocess.call(shlex.split(f"sudo {self.systemfilepaths.vpn4_bash}"))
+
+    def run_synergy_on(self):
+        subprocess.call(shlex.split(f"sudo {self.systemfilepaths.synergy_on_bash}"))
+
+    def run_synergy_off(self):
+        subprocess.call(shlex.split(f"sudo {self.systemfilepaths.synergy_off_bash}"))
 
 
 class SystemCTL:
@@ -149,6 +176,20 @@ class SystemCTL:
             )
         )
 
+    def synergy_on_ctl_enable(self):
+        subprocess.run(
+            shlex.split(
+                f"sudo systemctl enable {self.systemfilepaths.synergy_on_unitname}"
+            )
+        )
+
+    def synergy_on_ctl_disable(self):
+        subprocess.run(
+            shlex.split(
+                f"sudo systemctl disable {self.systemfilepaths.synergy_on_unitname}"
+            )
+        )
+
 
 class SystemD:
     def __init__(self):
@@ -173,6 +214,27 @@ class SystemD:
         protect_bash_filepath, protect_bashtext = self.service_bash_text.protect_text()
         self.systemdfiles.writebash(protect_bash_filepath, protect_bashtext)
         self.systemdfiles.writeservice(protect_service_filepath, protect_servicetext)
+
+    def synergy_on(self):
+        (
+            synergy_on_service_filepath,
+            synergy_on_servicetext,
+        ) = self.service_unit_text.synergy_on()
+        (
+            synergy_on_bash_filepath,
+            synergy_on_bashtext,
+        ) = self.service_bash_text.synergy_on_text()
+        self.systemdfiles.writebash(synergy_on_bash_filepath, synergy_on_bashtext)
+        self.systemdfiles.writeservice(
+            synergy_on_service_filepath, synergy_on_servicetext
+        )
+
+    def synergy_off(self):
+        (
+            synergy_off_bash_filepath,
+            synergy_off_bashtext,
+        ) = self.service_bash_text.synergy_off_text()
+        self.systemdfiles.writebash(synergy_off_bash_filepath, synergy_off_bashtext)
 
     def openvpn(self, granular: bool = False, netclass: str = "C"):
         vpn_service_filepath, vpn_servicetext = self.service_unit_text.openvpn()
@@ -274,6 +336,9 @@ class SystemdFiles:
         self.erase(self.systemdfilepaths.vpn4_service)
         self.erase(self.systemdfilepaths.docker_bash)
         self.erase(self.systemdfilepaths.docker_service)
+        self.erase(self.systemdfilepaths.synergy_on_bash)
+        self.erase(self.systemdfilepaths.synergy_on_service)
+        self.erase(self.systemdfilepaths.synergy_off_bash)
         self.erase(self.systemdfilepaths.nuke_bash)
 
 
@@ -322,6 +387,20 @@ Timeoutsec=60
 WantedBy=network.target
 """
         return self.systemdfilepaths.vpn4_service, text
+
+    def synergy_on(self):
+        text = f"""[Unit]
+Description=Run iptable commands to allow synergy services through firewall  
+Before=network-pre.target
+Wants=network-pre.target
+[Service]
+Type=oneshot
+ExecStart={self.systemdfilepaths.synergy_on_bash}
+Timeoutsec=60
+[Install]
+WantedBy=network.target
+"""
+        return self.systemdfilepaths.synergy_on_service, text
 
 
 class ServiceBashTexts:
@@ -503,6 +582,8 @@ iptables -D INPUT -j RB_I_RELATED_AND_ESTABLISHED
 iptables -D OUTPUT -j RB_O_RELATED_AND_ESTABLISHED
 iptables -D OUTPUT -j RB_OUTPUT_VPN_KILL_SWITCH
 iptables -D DOCKER-USER -j RB_DOCKER_VPN_KILL_SWITCH
+#iptables -D INPUT -j SYNERGY_I
+#iptables -D OUTPUT -j SYNERGY_O
 ip6tables --policy INPUT ACCEPT
 ip6tables --policy FORWARD ACCEPT
 ip6tables --policy OUTPUT ACCEPT
@@ -522,16 +603,22 @@ iptables -D INPUT -j RB_I_RELATED_AND_ESTABLISHED
 iptables -D OUTPUT -j RB_O_RELATED_AND_ESTABLISHED
 iptables -D OUTPUT -j RB_OUTPUT_VPN_KILL_SWITCH
 iptables -D DOCKER-USER -j RB_DOCKER_VPN_KILL_SWITCH
+iptables -D INPUT -j SYNERGY_I
+iptables -D OUTPUT -j SYNERGY_O
 echo "flush-F"
 iptables --flush RB_I_RELATED_AND_ESTABLISHED
 iptables --flush RB_O_RELATED_AND_ESTABLISHED
 iptables --flush RB_OUTPUT_VPN_KILL_SWITCH
 iptables --flush RB_DOCKER_VPN_KILL_SWITCH
+iptables --flush SYNERGY_I
+iptables --flush SYNERGY_O
 echo "flush-D"
 iptables --delete-chain RB_I_RELATED_AND_ESTABLISHED
 iptables --delete-chain RB_O_RELATED_AND_ESTABLISHED
 iptables --delete-chain RB_OUTPUT_VPN_KILL_SWITCH
 iptables --delete-chain RB_DOCKER_VPN_KILL_SWITCH
+iptables --delete-chain SYNERGY_I
+iptables --delete-chain SYNERGY_O
 ip6tables --policy INPUT ACCEPT
 ip6tables --policy FORWARD ACCEPT
 ip6tables --policy OUTPUT ACCEPT
@@ -708,3 +795,29 @@ ip6tables --policy OUTPUT DROP
 sysctl_file_disable_ipv6
 """
         return self.systemdfilepaths.docker_bash, text
+
+    def synergy_on_text(self):
+        text = f"""#!/bin/bash
+{self.bashfunctions}
+{self.procfunctions}
+create_filter_chain 'SYNERGY_I'
+#create_filter_rule 'iptables -A SYNERGY_I -i wlp4s0 -p tcp -m tcp --dport 24800 -s 192.168.0.0/16 -j ACCEPT'
+create_filter_rule 'iptables -A SYNERGY_I -p tcp -m tcp --dport 24800 -s 192.168.0.0/16 -j ACCEPT'
+create_filter_chain 'SYNERGY_O'
+#create_filter_rule 'iptables -A SYNERGY_O -o wlp4s0 -p tcp -m tcp --dport 24800 -s 192.168.0.0/16 -j ACCEPT'
+create_filter_rule 'iptables -A SYNERGY_O -p tcp -m tcp --dport 24800 -s 192.168.0.0/16 -j ACCEPT'
+create_filter_rule 'iptables -I INPUT -j SYNERGY_I'
+create_filter_rule 'iptables -I OUTPUT -j SYNERGY_O'
+"""
+        return self.systemdfilepaths.synergy_on_bash, text
+
+    def synergy_off_text(self):
+        text = f"""#!/bin/bash
+iptables -D INPUT -j SYNERGY_I
+iptables -D OUTPUT -j SYNERGY_O
+iptables -F SYNERGY_I
+iptables -X SYNERGY_I
+iptables -F SYNERGY_O
+iptables -X SYNERGY_O
+"""
+        return self.systemdfilepaths.synergy_off_bash, text

@@ -39,6 +39,16 @@ def vpnkillswitch():
         action="store_true",
         help="WARNING, this will reset your iptables to allow all traffic",
     )
+    mutually_exclusive_group.add_argument(
+        "--synergy-on",
+        action="store_true",
+        help="Allow synergy through firewall",
+    )
+    mutually_exclusive_group.add_argument(
+        "--synergy-off",
+        action="store_true",
+        help="Remove rules allowing synergy through firewall",
+    )
     granularity_group = main_group_parser.add_argument_group(
         "granularity", "option for more granular port lockdown/allow"
     )
@@ -91,3 +101,11 @@ def vpnkillswitch():
     if my_args.nuke:
         print(f"my_args.nuke:{my_args.nuke}, granularity:{my_args.granular}")
         ipswitches.switch_nuke()
+
+    if my_args.synergy_on:
+        print(f"Synergy ON: {my_args.synergy_on}")
+        ipswitches.switch_synergyon()
+
+    if my_args.synergy_off:
+        print(f"Synergy OFF: {my_args.synergy_off}")
+        ipswitches.switch_synergyoff()
