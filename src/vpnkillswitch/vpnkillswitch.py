@@ -58,6 +58,13 @@ def vpnkillswitch():
         action="store_true",
         help="Creates a more granular iptables ruleset",
     )
+    granularity_group.add_argument(
+        "-i",
+        "--vint",
+        default="tun+",
+        choices=['tun+','proton+','proton0'],
+        help="Choose the name of your virtual interface",
+    )
     netclass_group = main_group_parser.add_argument_group(
         "netclass",
         "What ip class are you connected to A 10.0.0.0/8,B 172.16.0.0/12 or C  192.168.0.0/16 ?",
@@ -75,8 +82,8 @@ def vpnkillswitch():
     ipswitches = SystemIPSwitches()
 
     if my_args.on:
-        print(f"my_args.on:{my_args.on}, granularity:{my_args.granular}")
-        ipswitches.switch_on(granular=my_args.granular, netclass=my_args.netclass)
+        print(f"my_args.on:{my_args.on}, granularity:{my_args.granular}, interface:{my_args.vint}")
+        ipswitches.switch_on(granular=my_args.granular, netclass=my_args.netclass,interface=my_args.vint)
 
     if my_args.off:
         print(f"my_args.off:{my_args.off}")

@@ -39,10 +39,10 @@ class SystemIPSwitches:
         self.systemctl = SystemCTL()
         self.systemd = SystemD()
 
-    def switch_on(self, granular: bool = False, netclass: str = "C"):
+    def switch_on(self, granular: bool = False, netclass: str = "C", interface: str = "tun+"):
         self.switch_flush()
-        self.switch_vpn(granular=granular, netclass=netclass)
-        self.switch_docker(granular)
+        self.switch_vpn(granular=granular, netclass=netclass, interface=interface)
+        self.switch_docker(granular=granular, interface=interface)
 
     def switch_off(self):
         try:
@@ -71,13 +71,13 @@ class SystemIPSwitches:
         self.systembash.run_protect()
         self.systemctl.protect_ctl_enable()
 
-    def switch_vpn(self, granular: bool = False, netclass: str = "C"):
-        self.systemd.openvpn(granular=granular, netclass=netclass)
+    def switch_vpn(self, granular: bool = False, netclass: str = "C", interface: str = 'tun+'):
+        self.systemd.openvpn(granular=granular, netclass=netclass, interface=interface)
         self.systembash.run_vpn4()
         self.systemctl.openvpn_ctl_enable()
 
-    def switch_docker(self, granular: bool = False):
-        self.systemd.docker(granular)
+    def switch_docker(self, granular: bool = False, interface: str = "tun+"):
+        self.systemd.docker(granular,interface)
         self.systembash.run_docker()
         self.systemctl.docker_ctl_enable()
 
@@ -236,7 +236,7 @@ class SystemD:
         ) = self.service_bash_text.synergy_off_text()
         self.systemdfiles.writebash(synergy_off_bash_filepath, synergy_off_bashtext)
 
-    def openvpn(self, granular: bool = False, netclass: str = "C"):
+    def openvpn(self, granular: bool = False, netclass: str = "C", interface: str = 'tun+'):
         vpn_service_filepath, vpn_servicetext = self.service_unit_text.openvpn()
         if granular:
             (
@@ -247,11 +247,11 @@ class SystemD:
             (
                 vpn_bash_filepath,
                 vpn_bashtext,
-            ) = self.service_bash_text.vpnkillswitch_text(netclass=netclass)
+            ) = self.service_bash_text.vpnkillswitch_text(netclass=netclass, interface=interface)
         self.systemdfiles.writebash(vpn_bash_filepath, vpn_bashtext)
         self.systemdfiles.writeservice(vpn_service_filepath, vpn_servicetext)
 
-    def docker(self, granular: bool = False):
+    def docker(self, granular: bool = False, interface: str = 'tun+'):
         docker_service_filepath, docker_servicetext = self.service_unit_text.docker()
         if granular:
             (
@@ -262,7 +262,7 @@ class SystemD:
             (
                 docker_bash_filepath,
                 docker_bashtext,
-            ) = self.service_bash_text.dockerkillswitch_text()
+            ) = self.service_bash_text.dockerkillswitch_text(interface=interface)
         self.systemdfiles.writebash(docker_bash_filepath, docker_bashtext)
         self.systemdfiles.writeservice(docker_service_filepath, docker_servicetext)
 
@@ -652,7 +652,7 @@ sysctl_file_disable_ipv6
 """
         return self.systemdfilepaths.protect_bash, text
 
-    def vpnkillswitch_text(self, netclass: str = "C"):
+    def vpnkillswitch_text(self, netclass: str = "C", interface: str = 'tun+'):
         if netclass == "C":
             netclassip = "192.168.0.0/16"
         if netclass == "B":
@@ -676,7 +676,7 @@ create_filter_rule 'iptables -I INPUT  -j RB_I_RELATED_AND_ESTABLISHED'
 #let's create a chain named RB_OUTPUT_VPN_KILL_SWITCH to hold our VPN rules
 create_filter_chain 'RB_OUTPUT_VPN_KILL_SWITCH'
 create_filter_rule 'iptables -A RB_OUTPUT_VPN_KILL_SWITCH -p udp -m udp --dport 1194 -j ACCEPT'
-create_filter_rule 'iptables -A RB_OUTPUT_VPN_KILL_SWITCH -o tun+ -j ACCEPT'
+create_filter_rule 'iptables -A RB_OUTPUT_VPN_KILL_SWITCH -o {interface} -j ACCEPT'
 create_filter_rule 'iptables -A RB_OUTPUT_VPN_KILL_SWITCH -o lo -j ACCEPT'
 #If you want to, you can also allow access to your local network.
 #The most common local network is class C, 192.168.0.0/16
@@ -753,13 +753,13 @@ sysctl_file_disable_ipv6
 """
         return self.systemdfilepaths.vpn4_bash, text
 
-    def dockerkillswitch_text(self):
+    def dockerkillswitch_text(self,  interface: str = 'tun+'):
         text = f"""#!/bin/bash
 {self.bashfunctions}
 {self.procfunctions}
 create_filter_chain 'RB_DOCKER_VPN_KILL_SWITCH'
-create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -o tun+ -j ACCEPT'
-create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -i tun+ -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
+create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -o {interface} -j ACCEPT'
+create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -i {interface} -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
 create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -j DROP'
 create_filter_rule 'iptables -I DOCKER-USER  -j RB_DOCKER_VPN_KILL_SWITCH'
 ip6tables --policy INPUT DROP
