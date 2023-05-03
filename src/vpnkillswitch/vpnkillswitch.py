@@ -49,6 +49,11 @@ def vpnkillswitch():
         action="store_true",
         help="Remove rules allowing synergy through firewall",
     )
+    mutually_exclusive_group.add_argument(
+        "--punboundpi",
+        action="store_true",
+        help="Protect, for local unbound running on p5335 with pihole",
+    )
     granularity_group = main_group_parser.add_argument_group(
         "granularity", "option for more granular port lockdown/allow"
     )
@@ -62,7 +67,7 @@ def vpnkillswitch():
         "-i",
         "--vint",
         default="tun+",
-        choices=['tun+','proton+','proton0'],
+        choices=["tun+", "proton+", "proton0"],
         help="Choose the name of your virtual interface",
     )
     netclass_group = main_group_parser.add_argument_group(
@@ -82,8 +87,12 @@ def vpnkillswitch():
     ipswitches = SystemIPSwitches()
 
     if my_args.on:
-        print(f"my_args.on:{my_args.on}, granularity:{my_args.granular}, interface:{my_args.vint}")
-        ipswitches.switch_on(granular=my_args.granular, netclass=my_args.netclass,interface=my_args.vint)
+        print(
+            f"my_args.on:{my_args.on}, granularity:{my_args.granular}, interface:{my_args.vint}"
+        )
+        ipswitches.switch_on(
+            granular=my_args.granular, netclass=my_args.netclass, interface=my_args.vint
+        )
 
     if my_args.off:
         print(f"my_args.off:{my_args.off}")
@@ -116,3 +125,7 @@ def vpnkillswitch():
     if my_args.synergy_off:
         print(f"Synergy OFF: {my_args.synergy_off}")
         ipswitches.switch_synergyoff()
+
+    if my_args.punboundpi:
+        print(f"punbound: {my_args.punboundpi}")
+        ipswitches.punboundpi()

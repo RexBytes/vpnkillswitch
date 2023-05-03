@@ -16,10 +16,12 @@ class SystemdFilePaths:
     unitdir: str = "/etc/systemd/system/"
     bashdir: str = "/usr/local/bin/"
     protect_unitname: str = "rexbytes_protect.service"
+    punboundpi_unitname: str = "rexbytes_punboundpi.service"
     docker_unitname: str = "rexbytes_dockerkillswitch.service"
     vpn4_unitname: str = "rexbytes_vpn4killswitch.service"
     synergy_on_unitname: str = "rexbytes_synergyonkillswitch.service"
     protect_service: str = f"{unitdir}{protect_unitname}"
+    punboundpi_service: str = f"{unitdir}{punboundpi_unitname}"
     docker_service: str = f"{unitdir}{docker_unitname}"
     vpn4_service: str = f"{unitdir}{vpn4_unitname}"
     synergy_on_service: str = f"{unitdir}{synergy_on_unitname}"
@@ -27,6 +29,7 @@ class SystemdFilePaths:
     flush_bash: str = f"{bashdir}rexbytes_flush.sh"
     off_bash: str = f"{bashdir}rexbytes_off.sh"
     protect_bash: str = f"{bashdir}rexbytes_protect.sh"
+    punboundpi_bash: str = f"{bashdir}rexbytes_punboundpi.sh"
     docker_bash: str = f"{bashdir}rexbytes_dockerkillswitch.sh"
     vpn4_bash: str = f"{bashdir}rexbytes_vpn4killswitch.sh"
     synergy_on_bash: str = f"{bashdir}rexbytes_synergyon.sh"
@@ -110,6 +113,11 @@ class SystemIPSwitches:
         except Exception as e:
             print(e)
 
+    def punboundpi(self):
+        self.systemd.punboundpi()
+        self.systembash.run_punboundpi()
+        self.systemctl.punboundpi_ctl_enable()
+
 
 class SystemBash:
     def __init__(self):
@@ -126,6 +134,9 @@ class SystemBash:
 
     def run_protect(self):
         subprocess.call(shlex.split(f"sudo {self.systemfilepaths.protect_bash}"))
+
+    def run_punboundpi(self):
+        subprocess.call(shlex.split(f"sudo {self.systemfilepaths.punboundpi_bash}"))
 
     def run_docker(self):
         subprocess.call(shlex.split(f"sudo {self.systemfilepaths.docker_bash}"))
@@ -194,6 +205,20 @@ class SystemCTL:
             )
         )
 
+    def punboundpi_ctl_enable(self):
+        subprocess.run(
+            shlex.split(
+                f"sudo systemctl enable {self.systemfilepaths.punboundpi_unitname}"
+            )
+        )
+
+    def punboundpi_ctl_disable(self):
+        subprocess.run(
+            shlex.split(
+                f"sudo systemctl disable {self.systemfilepaths.punboundpi_unitname}"
+            )
+        )
+
 
 class SystemD:
     def __init__(self):
@@ -218,6 +243,20 @@ class SystemD:
         protect_bash_filepath, protect_bashtext = self.service_bash_text.protect_text()
         self.systemdfiles.writebash(protect_bash_filepath, protect_bashtext)
         self.systemdfiles.writeservice(protect_service_filepath, protect_servicetext)
+
+    def punboundpi(self):
+        (
+            punboundpi_service_filepath,
+            punboundpi_servicetext,
+        ) = self.service_unit_text.punboundpi()
+        (
+            punboundpi_bash_filepath,
+            punboundpi_bashtext,
+        ) = self.service_bash_text.punboundpi_text()
+        self.systemdfiles.writebash(punboundpi_bash_filepath, punboundpi_bashtext)
+        self.systemdfiles.writeservice(
+            punboundpi_service_filepath, punboundpi_servicetext
+        )
 
     def synergy_on(self):
         (
@@ -303,7 +342,6 @@ class SystemdFiles:
     def writeservice_as_root(self, servicefilepath, servicecontent):
         with tempfile.NamedTemporaryFile(mode="w", delete=False) as servicefile_ntf:
             try:
-
                 with open(servicefile_ntf.name, "w+") as servicefile:
                     servicefile.writelines(servicecontent)
                 subprocess.run(
@@ -340,6 +378,8 @@ class SystemdFiles:
         self.erase(self.systemdfilepaths.off_bash)
         self.erase(self.systemdfilepaths.protect_bash)
         self.erase(self.systemdfilepaths.protect_service)
+        self.erase(self.systemdfilepaths.punboundpi_bash)
+        self.erase(self.systemdfilepaths.punboundpi_service)
         self.erase(self.systemdfilepaths.vpn4_bash)
         self.erase(self.systemdfilepaths.vpn4_service)
         self.erase(self.systemdfilepaths.docker_bash)
@@ -367,6 +407,20 @@ Timeoutsec=60
 WantedBy=network.target
 """
         return self.systemdfilepaths.protect_service, text
+
+    def punboundpi(self):
+        text = f"""[Unit]
+Description=Run iptable commands to create killswitch punboundpi
+Before=network-pre.target
+Wants=network-pre.target
+[Service]
+Type=oneshot
+ExecStart={self.systemdfilepaths.punboundpi_bash}
+Timeoutsec=60
+[Install]
+WantedBy=network.target
+"""
+        return self.systemdfilepaths.punboundpi_service, text
 
     def docker(self):
         text = f"""[Unit]
@@ -659,6 +713,36 @@ ip6tables --policy OUTPUT DROP
 sysctl_file_disable_ipv6
 """
         return self.systemdfilepaths.protect_bash, text
+
+    def punboundpi_text(self):
+        text = f"""#!/bin/bash
+{self.bashfunctions}
+{self.procfunctions}
+#Block all traffic as default.
+iptables --policy INPUT DROP
+iptables --policy FORWARD DROP
+iptables --policy OUTPUT DROP
+create_filter_rule 'iptables -A INPUT -m state --state INVALID -j DROP'
+create_filter_rule 'iptables -A FORWARD -m state --state INVALID -j DROP'
+create_filter_rule 'iptables -A OUTPUT -m state --state INVALID -j DROP'
+create_filter_chain 'RB_I_RELATED_AND_ESTABLISHED'
+create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -p udp --dport 5335 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT'
+create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
+create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -i lo -p udp --dport 53 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT'
+create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -m conntrack --ctstate NEW,ESTABLISHED -p tcp -m multiport --dports 22,80,443 -j ACCEPT'
+create_filter_rule 'iptables -I INPUT -j RB_I_RELATED_AND_ESTABLISHED'
+create_filter_chain 'RB_O_RELATED_AND_ESTABLISHED'
+create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -p udp --sport 5335 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
+create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT'
+create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -i lo -p udp --sport 53 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
+create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -m conntrack --ctstate NEW,RELATED,ESTABLISHED -p tcp -m multiport --sports 22,80,443 -j ACCEPT'
+create_filter_rule 'iptables -I OUTPUT -j RB_O_RELATED_AND_ESTABLISHED'
+ip6tables --policy INPUT DROP
+ip6tables --policy FORWARD DROP
+ip6tables --policy OUTPUT DROP
+sysctl_file_disable_ipv6
+"""
+        return self.systemdfilepaths.punboundpi_bash, text
 
     def vpnkillswitch_text(self, netclass: str = "C", interface: str = "tun+"):
         if netclass == "C":
