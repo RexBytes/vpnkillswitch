@@ -402,7 +402,7 @@ Wants=network-pre.target
 [Service]
 Type=oneshot
 ExecStart={self.systemdfilepaths.protect_bash}
-Timeoutsec=60
+TimeoutSec=60
 [Install]
 WantedBy=network.target
 """
@@ -411,14 +411,13 @@ WantedBy=network.target
     def punboundpi(self):
         text = f"""[Unit]
 Description=Run iptable commands to create killswitch punboundpi
-Before=network-pre.target
-Wants=network-pre.target
+After=docker.service
 [Service]
 Type=oneshot
 ExecStart={self.systemdfilepaths.punboundpi_bash}
-Timeoutsec=60
+TimeoutSec=60
 [Install]
-WantedBy=network.target
+WantedBy=multi-user.target
 """
         return self.systemdfilepaths.punboundpi_service, text
 
@@ -730,6 +729,7 @@ create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -p udp --dport 5335
 create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
 create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -i lo -p udp --dport 53 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT'
 create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -m conntrack --ctstate NEW,ESTABLISHED -p tcp -m multiport --dports 22,80,443 -j ACCEPT'
+create_filter_rule 'iptables -A RB_I_RELATED_AND_ESTABLISHED -p icmp -j DROP'
 create_filter_rule 'iptables -I INPUT -j RB_I_RELATED_AND_ESTABLISHED'
 create_filter_chain 'RB_O_RELATED_AND_ESTABLISHED'
 create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -p udp --sport 5335 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
@@ -737,6 +737,13 @@ create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -m conntrack --ctst
 create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -i lo -p udp --sport 53 -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
 create_filter_rule 'iptables -A RB_O_RELATED_AND_ESTABLISHED -m conntrack --ctstate NEW,RELATED,ESTABLISHED -p tcp -m multiport --sports 22,80,443 -j ACCEPT'
 create_filter_rule 'iptables -I OUTPUT -j RB_O_RELATED_AND_ESTABLISHED'
+#create_filter_rule 'iptables -N RB_DOCKER_VPN_KILL_SWITCH'
+#create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -p udp -m udp --dport 5335 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT'
+#create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -m conntrack --ctstate RELATED,ESTABLISHED -j ACCEPT'
+#create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH ! -i lo -p udp -m udp --dport 53 -m conntrack --ctstate NEW,RELATED,ESTABLISHED -j ACCEPT'
+#create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH ! -i lo -p tcp -m multiport --dports 22,80,443 -m conntrack --ctstate NEW,ESTABLISHED -j ACCEPT'
+#create_filter_rule 'iptables -A RB_DOCKER_VPN_KILL_SWITCH -j DROP'
+#create_filter_rule 'iptables -I DOCKER-USER -j RB_DOCKER_VPN_KILL_SWITCH'
 ip6tables --policy INPUT DROP
 ip6tables --policy FORWARD DROP
 ip6tables --policy OUTPUT DROP
